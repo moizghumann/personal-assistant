@@ -1,11 +1,5 @@
 import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
-
-const app = new Hono()
-
-app.get('/', (c) => {
-  return c.text('Hello Raiway!')
-})
+import app from './app.js'
 
 serve({
   fetch: app.fetch,
@@ -13,3 +7,5 @@ serve({
 }, (info) => {
   console.log(`Server is running on http://localhost:${info.port}`)
 })
+
+export default app
