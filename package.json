@@ -3,6 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "test": "node --import tsx --test",
     "build": "tsc",
     "start": "node dist/index.js"
   },
