@@ -10,8 +10,8 @@ open http://localhost:3000
 ## Telegram AI bot
 
 Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `NEON_AI_GATEWAY_BASE_URL`,
-and `NEON_AI_GATEWAY_TOKEN` in the server environment. To load them from
-`src/.env` locally, run `node --env-file=src/.env --import tsx src/index.ts`.
+and `NEON_AI_GATEWAY_TOKEN` in the server environment. `npm run dev` loads
+them from `src/.env` locally.
 After deploying, call Telegram's [`setWebhook`](https://core.telegram.org/bots/api#setwebhook)
 with your public HTTPS URL ending in `/telegram/webhook`, the same secret as
 `secret_token`, and `allowed_updates` set to `["message"]`.
