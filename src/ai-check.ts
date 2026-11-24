@@ -1,27 +1,27 @@
 import { neon } from '@neon/ai-sdk-provider'
-import { serve } from '@upstash/workflow/hono'
 import { generateText } from 'ai'
 import { Hono } from 'hono'
 
-const aiTest = new Hono()
-
-async function generateAnswer(signal: AbortSignal = AbortSignal.timeout(12_000)) {
+export async function generateAnswer() {
+  const signal = AbortSignal.timeout(12_000)
   try {
-    const { text } = await generateText({
+    const result = await generateText({
       model: neon('meta-llama-3-1-8b-instruct'),
-      prompt: 'Explain why the sky looks blue in one short sentence.',
-      maxOutputTokens: 64,
+      prompt: 'Earth takes about 365.24 days to orbit the Sun. Explain why most calendar years have 365 days and why we have leap years in two or three plain-text sentences.',
+      maxOutputTokens: 256,
       maxRetries: 0,
       abortSignal: signal,
     })
-    const answer = text.trim()
-    if (!answer) throw new Error('The model returned no text')
-    return answer
+    const text = result.text.trim()
+    if (!text) throw new Error('The model returned no text')
+    return text
   } catch (error) {
     signal.throwIfAborted()
     throw error
   }
 }
+
+const aiTest = new Hono()
 
 let cachedTest: { expiresAt: number; answer: Promise<string> } | undefined
 
@@ -47,24 +47,5 @@ aiTest.get('/test/ai', async (c) => {
     return c.text('AI test could not generate a response', 502)
   }
 })
-
-const workflow = serve(async (context) => {
-  await context.run('generate-answer', async () => ({ text: await generateAnswer() }))
-})
-
-aiTest.post('/workflows/ai-test', async (c, next) => {
-  const localDev = ['true', '1'].includes(process.env.QSTASH_DEV ?? '')
-  if (localDev && (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT_ID)) {
-    return c.text('QStash development mode is unavailable in production', 503)
-  }
-  const { QSTASH_TOKEN, QSTASH_CURRENT_SIGNING_KEY, QSTASH_NEXT_SIGNING_KEY } = process.env
-  if (!localDev && !(QSTASH_TOKEN && QSTASH_CURRENT_SIGNING_KEY && QSTASH_NEXT_SIGNING_KEY)) {
-    return c.text('Upstash Workflow is not configured', 503)
-  }
-  if (!c.req.header('upstash-signature')) return c.text('QStash signature required', 401)
-
-  await next()
-  if (c.res.status === 500) c.res = c.text('Workflow request failed', 500)
-}, workflow)
 
 export default aiTest

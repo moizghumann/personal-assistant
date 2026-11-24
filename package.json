@@ -4,8 +4,8 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=src/.env --import tsx src/index.ts",
     "test": "node --import tsx --test",
-    "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js"
+    "build": "tsc -p tsconfig.build.json --noEmit",
+    "start": "node --import tsx src/index.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",
@@ -14,12 +14,12 @@
     "@neon/env": "^2.1.9",
     "@upstash/workflow": "^1.5.1",
     "ai": "^7.0.181",
-    "hono": "^4.13.16"
+    "hono": "^4.13.16",
+    "tsx": "^4.23.0"
   },
   "devDependencies": {
     "@hono/cli": "^1.0.0-rc.9",
     "@types/node": "^26.1.1",
-    "tsx": "^4.23.0",
     "typescript": "^7.0.2"
   }
 }
