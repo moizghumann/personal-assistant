@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import { timingSafeEqual } from 'hono/utils/buffer'
-import { generateTelegramAnswer } from './ai.js'
+import { generateTelegramAnswer, telegramGenerationFailure } from './ai.js'
 import { parseTelegramUpdate, sendTelegramReply } from './telegram-api.js'
 
 export async function receiveTelegramWebhook(c: Context) {
@@ -23,6 +23,10 @@ export async function receiveTelegramWebhook(c: Context) {
   }
 
   const reply = await generateTelegramAnswer({ NEON_AI_GATEWAY_BASE_URL, NEON_AI_GATEWAY_TOKEN }, message.text)
+    .catch(() => {
+      console.error('Neon AI Gateway generation failed')
+      return telegramGenerationFailure
+    })
   try {
     await sendTelegramReply(TELEGRAM_BOT_TOKEN, message, reply)
     return c.body(null, 204)

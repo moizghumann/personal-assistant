@@ -53,6 +53,34 @@ export function isTelegramReply(input: unknown): input is TelegramReply {
   return typeof reply.text === 'string' && Boolean(reply.text.trim()) && hasTelegramReplyIds(reply)
 }
 
+export class TelegramRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Telegram sendMessage failed (HTTP 429)')
+  }
+}
+
+export class TelegramRejectedError extends Error {
+  constructor(status: number) {
+    super(`Telegram rejected reply (HTTP ${status})`)
+  }
+}
+
+export async function sendTelegramTyping(token: string, message: TelegramReply) {
+  // Telegram excludes channel direct-message chats from sendChatAction.
+  if (message.directTopicId !== undefined) return
+  await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: message.chatId,
+      message_thread_id: message.threadId,
+      action: 'typing',
+    }),
+    redirect: 'manual',
+    signal: AbortSignal.timeout(1_500),
+  }).catch(() => {})
+}
+
 export async function sendTelegramReply(token: string, message: TelegramReply, text: string) {
   let response: Response
   try {
@@ -70,12 +98,23 @@ export async function sendTelegramReply(token: string, message: TelegramReply, t
       signal: AbortSignal.timeout(5_000),
     })
   } catch {
-    throw new Error('Telegram sendMessage request failed')
+    throw new Error('Telegram delivery unknown (no response)')
   }
 
-  if (!response.ok) throw new Error(`Telegram sendMessage failed (HTTP ${response.status})`)
-  const result = await response.json().catch(() => null) as { ok?: unknown } | null
-  if (result?.ok !== true) {
-    throw new Error(`Telegram sendMessage failed (HTTP ${response.status})`)
+  const result = await response.json().catch(() => null) as {
+    ok?: unknown
+    error_code?: unknown
+    parameters?: { retry_after?: unknown }
+    result?: { message_id?: unknown }
+  } | null
+  if (response.status === 429 && result?.ok === false && result.error_code === 429) {
+    const delay = result.parameters?.retry_after
+    throw new TelegramRateLimitError(typeof delay === 'number' && Number.isSafeInteger(delay) && delay > 0 ? delay : 1)
   }
+  if (response.status >= 400 && response.status < 500 && result?.ok === false && result.error_code === response.status) {
+    throw new TelegramRejectedError(response.status)
+  }
+  const id = result?.result?.message_id
+  if (response.ok && result?.ok === true && typeof id === 'number' && Number.isSafeInteger(id)) return id
+  throw new Error(`Telegram delivery unknown (HTTP ${response.status})`)
 }

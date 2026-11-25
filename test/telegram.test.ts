@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import app from '../src/app.js'
-import { sendTelegramReply } from '../src/telegram-api.js'
+import { sendTelegramReply, sendTelegramTyping, TelegramRateLimitError } from '../src/telegram-api.js'
 
 test('Hono verifies Telegram updates and replies directly through Neon and Telegram', async (t) => {
   process.env.TELEGRAM_WEBHOOK_SECRET = 'test-secret'
@@ -22,7 +22,7 @@ test('Hono verifies Telegram updates and replies directly through Neon and Teleg
       })
     }
     assert.equal(url, 'https://api.telegram.org/botfake-bot-token/sendMessage')
-    return Response.json({ ok: telegramStatus === 200 }, { status: telegramStatus })
+    return Response.json({ ok: telegramStatus === 200, result: { message_id: 8 } }, { status: telegramStatus })
   })
 
   const post = (update: object, secret = 'test-secret') => app.request('/telegram/webhook', {
@@ -66,11 +66,11 @@ test('Hono verifies Telegram updates and replies directly through Neon and Teleg
 test('The agent sends the reply to the original chat and thread', async (t) => {
   let telegramStatus = 200
   const fetchMock = t.mock.method(globalThis, 'fetch', async () =>
-    Response.json({ ok: telegramStatus === 200 }, { status: telegramStatus }),
+    Response.json({ ok: telegramStatus === 200, result: { message_id: 8 } }, { status: telegramStatus }),
   )
   const message = { updateId: 1, chatId: -123, messageId: 7, threadId: 5, text: 'hello' }
 
-  await sendTelegramReply('fake-token', message, 'Hello! How can I help?')
+  assert.equal(await sendTelegramReply('fake-token', message, 'Hello! How can I help?'), 8)
   const [destination, options] = fetchMock.mock.calls[0].arguments
   assert.equal(destination, 'https://api.telegram.org/botfake-token/sendMessage')
   assert.equal(options.redirect, 'manual')
@@ -84,4 +84,29 @@ test('The agent sends the reply to the original chat and thread', async (t) => {
   await assert.rejects(sendTelegramReply('fake-token', message, 'Hello'), /HTTP 429/)
   telegramStatus = 302
   await assert.rejects(sendTelegramReply('fake-token', message, 'Hello'), /HTTP 302/)
+})
+
+test('Telegram replies distinguish a confirmed flood limit from an ambiguous failure', async (t) => {
+  const message = { updateId: 1, chatId: 42, messageId: 7, text: 'hello' }
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () =>
+    Response.json({ ok: false, error_code: 429, parameters: { retry_after: 3 } }, { status: 429 }),
+  )
+  await assert.rejects(sendTelegramReply('fake-token', message, 'Hello'),
+    (error) => error instanceof TelegramRateLimitError && error.retryAfterSeconds === 3)
+
+  fetchMock.mock.mockImplementation(async () => Response.json({ error: 'Gateway timeout' }, { status: 504 }))
+  await assert.rejects(sendTelegramReply('fake-token', message, 'Hello'),
+    (error) => error instanceof Error && !(error instanceof TelegramRateLimitError) && /HTTP 504/.test(error.message))
+})
+
+test('Typing targets the original chat and forum topic', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('Mock network failure') })
+  const message = { updateId: 1, chatId: -123, messageId: 7, threadId: 5, text: 'hello' }
+  await sendTelegramTyping('fake-token', message)
+
+  const [destination, options] = fetchMock.mock.calls[0].arguments
+  assert.equal(destination, 'https://api.telegram.org/botfake-token/sendChatAction')
+  assert.deepEqual(JSON.parse(options.body), { chat_id: -123, message_thread_id: 5, action: 'typing' })
+  await sendTelegramTyping('fake-token', { ...message, directTopicId: 11 })
+  assert.equal(fetchMock.mock.callCount(), 1)
 })

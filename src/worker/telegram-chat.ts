@@ -1,6 +1,7 @@
 import { AIChatAgent } from '@cloudflare/ai-chat'
 import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse } from 'ai'
-import { generateTelegramAnswer } from '../ai.js'
+import { generateTelegramAnswer, neonRateLimit } from '../ai.js'
+import { sendTelegramReply, TelegramRateLimitError, TelegramRejectedError } from '../telegram-api.js'
 import type { TelegramReply } from '../telegram-api.js'
 
 export type TelegramWorkflowInput = TelegramReply & { previousWorkflowId?: string }
@@ -66,8 +67,13 @@ export class TelegramChat extends AIChatAgent<Env> {
     const receipt = `accepted:telegram-${updateId}`
     const previousReply = this.messages.find((message) => message.id === `${id}-reply`)
     const savedText = previousReply?.parts.find((part) => part.type === 'text')?.text
-    if (savedText) return savedText
-    if (await this.ctx.storage.get(receipt) === 'answered') {
+    if (savedText) {
+      this.ctx.storage.kv.put(receipt, 'answered')
+      return savedText
+    }
+    const state = this.ctx.storage.kv.get(receipt)
+    if (state === 'generating') throw new Error('Neon AI Gateway generation outcome unknown')
+    if (state === 'answered') {
       throw new Error('Telegram reply is outside retained history')
     }
 
@@ -84,15 +90,27 @@ export class TelegramChat extends AIChatAgent<Env> {
     const reply = this.messages.find((message) => message.id === `${id}-reply`)
     const replyText = reply?.parts.find((part) => part.type === 'text')?.text
     if (!replyText) throw new Error('Telegram agent returned no reply')
-    await this.ctx.storage.put(receipt, 'answered')
+    this.ctx.storage.kv.put(receipt, 'answered')
     return replyText
   }
 
   async onChatMessage() {
     const last = this.messages.at(-1)
-    if (last?.role !== 'user') throw new Error('Telegram agent has no user message')
+    if (last?.role !== 'user' || !last.id.startsWith('telegram-message-')) {
+      throw new Error('Telegram agent has no user message')
+    }
     const history = await convertToModelMessages(this.messages.slice(-21))
-    const text = await generateTelegramAnswer(this.env, history)
+    const receipt = `accepted:telegram-${last.id.slice('telegram-message-'.length)}`
+    const storage = this.ctx.storage.kv
+    const state = storage.get(receipt)
+    if (state === 'generating') throw new Error('Neon AI Gateway generation outcome unknown')
+    if (state === 'answered') throw new Error('Telegram update has already been answered')
+    // Record the attempt before calling Neon so a crash cannot trigger a second model call.
+    storage.put(receipt, 'generating')
+    const text = await generateTelegramAnswer(this.env, history).catch((error: unknown) => {
+      if (error instanceof Error && error.message === neonRateLimit) storage.put(receipt, 'accepted')
+      throw error
+    })
 
     return createUIMessageStreamResponse({
       stream: createUIMessageStream({
@@ -105,5 +123,29 @@ export class TelegramChat extends AIChatAgent<Env> {
         },
       }),
     })
+  }
+
+  async deliverUpdate(message: TelegramReply, text: string): Promise<{ messageId: number } | { retryAfter: number }> {
+    const storage = this.ctx.storage.kv
+    const key = `telegram-delivery:${message.updateId}`
+    const receipt = storage.get<number | 'unknown' | 'rejected'>(key)
+    if (typeof receipt === 'number') return { messageId: receipt }
+    if (receipt === 'unknown') throw new Error('Telegram delivery unknown (an earlier attempt was not acknowledged)')
+    if (receipt === 'rejected') throw new Error('Telegram rejected an earlier delivery attempt')
+
+    // shortcut: a lost acknowledgement leaves delivery unknown, revisit if Telegram adds idempotent sends.
+    storage.put(key, 'unknown')
+    try {
+      const messageId = await sendTelegramReply(this.env.TELEGRAM_BOT_TOKEN, message, text)
+      storage.put(key, messageId)
+      return { messageId }
+    } catch (error) {
+      if (error instanceof TelegramRateLimitError) {
+        storage.delete(key)
+        return { retryAfter: error.retryAfterSeconds }
+      }
+      if (error instanceof TelegramRejectedError) storage.put(key, 'rejected')
+      throw error
+    }
   }
 }

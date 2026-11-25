@@ -1,5 +1,5 @@
 import { createNeon } from '@neon/ai-sdk-provider'
-import { generateText } from 'ai'
+import { APICallError, generateText } from 'ai'
 import type { ModelMessage } from 'ai'
 
 type NeonEnv = {
@@ -36,13 +36,23 @@ export function generateTestAnswer(
   return generateAnswer(env, prompt)
 }
 
+export const telegramGenerationFailure = 'I couldn’t generate a reply right now. Please try again.'
+export const neonRateLimit = 'Neon AI Gateway generation failed (HTTP 429)'
+
 export async function generateTelegramAnswer(env: NeonEnv, prompt: string | ModelMessage[]) {
   try {
     const text = await generateAnswer(env, prompt, 'Reply concisely, in a non robotic and humane way in plain text.')
     return text.slice(0, 4096).toWellFormed()
-  } catch {
-    console.error('Neon AI Gateway generation failed')
-    return 'I couldn’t generate a reply right now. Please try again.'
+  } catch (error) {
+    // Provider errors can include the Telegram transcript in their request body.
+    if (APICallError.isInstance(error) && error.statusCode) {
+      if (error.statusCode === 429) throw new Error(neonRateLimit)
+      throw new Error(`Neon AI Gateway generation failed (HTTP ${error.statusCode})`)
+    }
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw new Error('Neon AI Gateway generation timed out')
+    }
+    throw new Error('Neon AI Gateway generation failed')
   }
 }
 
