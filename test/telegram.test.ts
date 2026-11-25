@@ -31,7 +31,7 @@ test('Telegram contains printed tool syntax in the initial reply and recovery', 
       ]
       const fetchMock = t.mock.method(globalThis, 'fetch', async (destination: string | URL) => {
         assert.equal(String(destination), 'https://neon.test/openai/v1/responses')
-        return Response.json({ id: 'resp_1', model: 'gpt-6-1-sol', output: [replies.shift()] })
+        return Response.json({ id: 'resp_1', model: 'gpt-6-luna', output: [replies.shift()] })
       })
       const webSearch = tool({
         inputSchema: jsonSchema({ type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }),
@@ -43,7 +43,7 @@ test('Telegram contains printed tool syntax in the initial reply and recovery', 
       }, 'Any upcoming comedy in Lahore?', { instructions: 'Use live sources.', links: new Set(), tools: { webSearch } })
       assert.equal(reply, example === cases[0] ? answer : 'I couldn’t verify that with a web search.')
       assert.equal(fetchMock.mock.callCount(), example.callsTool ? 3 : 2)
-      assert.equal(JSON.parse(fetchMock.mock.calls[0].arguments[1].body).model, 'gpt-6-1-sol')
+      assert.equal(JSON.parse(fetchMock.mock.calls[0].arguments[1].body).model, 'gpt-6-luna')
       assert.equal(JSON.parse(fetchMock.mock.calls[1].arguments[1].body).tool_choice, 'required')
       if (example.callsTool) assert.equal(JSON.parse(fetchMock.mock.calls[2].arguments[1].body).tool_choice, 'none')
     })

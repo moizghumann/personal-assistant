@@ -19,7 +19,7 @@ async function generateAnswer(env: NeonEnv, input: string | ModelMessage[], inst
   let usedTools = false
 
   try {
-    const model = neon(tools ? 'gpt-6-1-sol' : 'meta-llama-3-1-8b-instruct')
+    const model = neon(tools ? 'gpt-6-luna' : 'meta-llama-3-1-8b-instruct')
     const messages = typeof input === 'string' ? { prompt: input } : { messages: input }
     const options = {
       model,
