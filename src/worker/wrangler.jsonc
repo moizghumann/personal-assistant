@@ -12,9 +12,9 @@
   },
   "migrations": [{ "tag": "telegram-chat-v1", "new_sqlite_classes": ["TelegramChat"] }],
   "workflows": [
-    { "name": "hello-world", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
-    { "name": "ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
-    { "name": "telegram-reply", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
+    { "name": "prod-hello", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
+    { "name": "prod-ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
+    { "name": "prod-telegram", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
   ],
   "env": {
     "dev": {
@@ -27,9 +27,9 @@
       },
       "migrations": [{ "tag": "telegram-chat-v1", "new_sqlite_classes": ["TelegramChat"] }],
       "workflows": [
-        { "name": "hello-world-dev", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
-        { "name": "ai-test-dev", "binding": "AI_TEST", "class_name": "AiTest" },
-        { "name": "telegram-reply-dev", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
+        { "name": "dev-hello", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
+        { "name": "dev-ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
+        { "name": "dev-telegram", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
       ]
     }
   }
