@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "rootDir": "./src",
     "target": "ESNext",
     "module": "NodeNext",
     "strict": true,
@@ -12,5 +13,5 @@
     "jsxImportSource": "hono/jsx"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "src/worker"]
 }

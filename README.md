@@ -10,32 +10,30 @@ open http://localhost:3000
 `npm run build` type-checks `src` without generating files. `npm start` runs
 `src/index.ts` directly with `tsx` and uses the server environment.
 
-## Telegram AI bot
+## Telegram agent and Cloudflare Workflows
 
-Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `NEON_AI_GATEWAY_BASE_URL`,
-and `NEON_AI_GATEWAY_TOKEN` in the server environment. `npm run dev` loads
-them from `src/.env` locally.
-After deploying, call Telegram's [`setWebhook`](https://core.telegram.org/bots/api#setwebhook)
-with your public HTTPS URL ending in `/telegram/webhook`, the same secret as
-`secret_token`, and `allowed_updates` set to `["message"]`.
+The Railway Hono app verifies Telegram webhooks, generates replies through
+Neon AI Gateway, and sends the replies back to Telegram. The Cloudflare Worker
+can run its workflows independently.
 
-The bot replies to text messages using Llama 3.1 8B Instruct through Neon AI
-Gateway. Run `npm test` to check the webhook with mocked AI Gateway and
-Telegram APIs.
+| Environment | Variables |
+| --- | --- |
+| Hono on Railway or local `src/.env` | `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_BOT_TOKEN`, `NEON_AI_GATEWAY_BASE_URL`, `NEON_AI_GATEWAY_TOKEN` |
+| Cloudflare Worker or local `src/worker/.dev.vars` | `NEON_AI_GATEWAY_BASE_URL`, `NEON_AI_GATEWAY_TOKEN`, `TELEGRAM_BOT_TOKEN`, `AGENT_WORKER_TOKEN` |
 
-## Upstash Workflow smoke tests
+The Hono app starts at `src/index.ts` and the Worker starts at
+`src/worker/agent-worker.ts`. Workflow definitions live in `src/worker/workflows`.
 
-`GET /test/ai` returns a short AI-generated answer. Start these background runs
-and check their step output in the Upstash console:
+Use a different `AGENT_WORKER_TOKEN` for local and production Worker HTTP
+requests. Start Hono with `npm run dev` or the Worker with `npm run dev:worker`.
 
-- `POST /workflows/hello-world` waits five seconds and returns a greeting in the
-  `greet` step. Send `{}` for the default greeting or `{"name":"Moiz"}` for a name.
-- `POST /workflows/ai-test` returns generated text in the `generate-answer` step.
+- Open [`/test/ai`](http://localhost:3000/test/ai) for an answer from Hono.
+- Open [Wrangler Local Explorer](http://localhost:8787/cdn-cgi/local/explorer)
+  to run `hello-world` and `ai-test` and inspect their output. These workflows
+  can run with Hono stopped.
 
-On Railway, set `QSTASH_URL`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, and
-`QSTASH_NEXT_SIGNING_KEY` for the same Upstash region. Set `UPSTASH_WORKFLOW_URL`
-to the app's public HTTPS base URL. The workflow uses the app's Neon credentials.
+Run `npm test` for the mocked Telegram webhook and `npm run build:worker` to
+generate Worker binding types and type-check the workflows.
 
-For local testing, set `QSTASH_DEV=true` in `src/.env` and run `npm run dev`.
-Open the local QStash console URL printed in the terminal and start a workflow
-against either path on `http://localhost:3000`.
+Deploy each app independently. The Telegram webhook URL and
+`TELEGRAM_WEBHOOK_SECRET` belong to the Hono app on Railway.

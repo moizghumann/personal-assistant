@@ -1,8 +1,8 @@
 ## Hono CLI
 
 Run `npx hono --help` first, and use the CLI instead of a dev server.
-Pass `--external ai` to commands that load the app so Node resolves the AI SDK
-directly. For example, run `npx hono routes --external ai` from the repo root.
+Run `npx hono routes --external ai` from the repo root to inspect the Hono app.
+Pass `--external ai` when a Hono CLI command loads the app so Node resolves the AI SDK.
 
 ## Verification
 

@@ -3,8 +3,10 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --env-file-if-exists=src/.env --import tsx src/index.ts",
-    "test": "node --import tsx --test",
-    "build": "tsc -p tsconfig.build.json --noEmit",
+    "dev:worker": "wrangler dev --config src/worker/wrangler.jsonc",
+    "test": "node --import tsx --test 'test/**/*.test.ts'",
+    "build": "tsc --noEmit",
+    "build:worker": "wrangler types --config src/worker/wrangler.jsonc src/worker/worker-configuration.d.ts && tsc -p src/worker/tsconfig.json",
     "start": "node --import tsx src/index.ts"
   },
   "dependencies": {
@@ -12,7 +14,6 @@
     "@neon/ai-sdk-provider": "^1.6.0",
     "@neon/config": "^1.14.6",
     "@neon/env": "^2.1.9",
-    "@upstash/workflow": "^1.5.1",
     "ai": "^7.0.181",
     "hono": "^4.13.16",
     "tsx": "^4.23.0"
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@hono/cli": "^1.0.0-rc.9",
     "@types/node": "^26.1.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.168.0"
   }
 }
