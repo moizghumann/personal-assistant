@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import { generateTestAnswer } from './ai.js'
 import { receiveTelegramWebhook } from './telegram.js'
 
 const app = new Hono()
@@ -14,33 +13,38 @@ app.get('/marco', (c) => {
 
 app.post('/telegram/webhook', receiveTelegramWebhook)
 
-let cachedTest: { expiresAt: number; answer: Promise<string> } | undefined
-
 app.get('/test/ai', async (c) => {
   c.header('Cache-Control', 'no-store')
-  const { NEON_AI_GATEWAY_BASE_URL, NEON_AI_GATEWAY_TOKEN } = process.env
-  if (!NEON_AI_GATEWAY_BASE_URL || !NEON_AI_GATEWAY_TOKEN) {
-    return c.text('Neon AI Gateway is not configured', 503)
+  const { AGENT_WORKER_URL, AGENT_WORKER_TOKEN } = process.env
+  if (!AGENT_WORKER_URL || !AGENT_WORKER_TOKEN) {
+    return c.text('Cloudflare agent is not configured', 503)
   }
 
-  const now = Date.now()
-  if (!cachedTest || cachedTest.expiresAt <= now) {
-    // shortcut: share one attempt per process per minute until this temporary route is removed.
-    cachedTest = {
-      expiresAt: now + 60_000,
-      answer: generateTestAnswer({ NEON_AI_GATEWAY_BASE_URL, NEON_AI_GATEWAY_TOKEN }),
-    }
-  }
-
+  const prompt = c.req.query('prompt')?.trim() ?? ''
   try {
-    return c.text(await cachedTest.answer)
+    const response = await fetch(new URL('/test/ai', AGENT_WORKER_URL), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${AGENT_WORKER_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(25_000),
+    })
+    const workflowId = response.headers.get('X-Workflow-Id')
+    if (workflowId) c.header('X-Workflow-Id', workflowId)
+    if (response.ok) return c.text(await response.text())
+    if (response.status === 504) return c.text('AI test timed out', 504)
+    if (response.status === 503) return c.text('Cloudflare agent is unavailable', 503)
+    console.error('Cloudflare agent returned an error', response.status)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       return c.text('AI test timed out', 504)
     }
-    console.error('AI test generation failed')
-    return c.text('AI test could not generate a response', 502)
+    console.error('Cloudflare agent request failed')
   }
+  return c.text('AI test could not generate a response', 502)
 })
 
 export default app

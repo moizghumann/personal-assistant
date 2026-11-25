@@ -28,8 +28,11 @@ async function generateAnswer(env: NeonEnv, prompt: string, instructions?: strin
   }
 }
 
-export function generateTestAnswer(env: NeonEnv) {
-  return generateAnswer(env, 'Earth takes about 365.24 days to orbit the Sun. Explain why most calendar years have 365 days and why we have leap years in two or three plain-text sentences.')
+export function generateTestAnswer(
+  env: NeonEnv,
+  prompt = 'Earth takes about 365.24 days to orbit the Sun. Explain why most calendar years have 365 days and why we have leap years in two or three plain-text sentences.',
+) {
+  return generateAnswer(env, prompt)
 }
 
 export async function generateTelegramAnswer(env: NeonEnv, prompt: string) {
