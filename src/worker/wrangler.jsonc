@@ -5,8 +5,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true, "traces": { "enabled": true } },
   "secrets": {
-    "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN"]
+    "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
   },
+  "durable_objects": {
+    "bindings": [{ "name": "TELEGRAM_CHAT", "class_name": "TelegramChat" }]
+  },
+  "migrations": [{ "tag": "telegram-chat-v1", "new_sqlite_classes": ["TelegramChat"] }],
   "workflows": [
     { "name": "hello-world", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
     { "name": "ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
@@ -16,8 +20,12 @@
     "dev": {
       "name": "personal-assistant-agent-dev",
       "secrets": {
-        "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN"]
+        "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
       },
+      "durable_objects": {
+        "bindings": [{ "name": "TELEGRAM_CHAT", "class_name": "TelegramChat" }]
+      },
+      "migrations": [{ "tag": "telegram-chat-v1", "new_sqlite_classes": ["TelegramChat"] }],
       "workflows": [
         { "name": "hello-world-dev", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
         { "name": "ai-test-dev", "binding": "AI_TEST", "class_name": "AiTest" },

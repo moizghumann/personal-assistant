@@ -1,12 +1,13 @@
 import { createNeon } from '@neon/ai-sdk-provider'
 import { generateText } from 'ai'
+import type { ModelMessage } from 'ai'
 
 type NeonEnv = {
   NEON_AI_GATEWAY_BASE_URL: string
   NEON_AI_GATEWAY_TOKEN: string
 }
 
-async function generateAnswer(env: NeonEnv, prompt: string, instructions?: string) {
+async function generateAnswer(env: NeonEnv, input: string | ModelMessage[], instructions?: string) {
   const signal = AbortSignal.timeout(12_000)
   const neon = createNeon({ baseURL: env.NEON_AI_GATEWAY_BASE_URL, apiKey: env.NEON_AI_GATEWAY_TOKEN })
 
@@ -14,7 +15,7 @@ async function generateAnswer(env: NeonEnv, prompt: string, instructions?: strin
     const { text } = await generateText({
       model: neon('meta-llama-3-1-8b-instruct'),
       instructions,
-      prompt,
+      ...(typeof input === 'string' ? { prompt: input } : { messages: input }),
       maxOutputTokens: 256,
       maxRetries: 0,
       abortSignal: signal,
@@ -35,7 +36,7 @@ export function generateTestAnswer(
   return generateAnswer(env, prompt)
 }
 
-export async function generateTelegramAnswer(env: NeonEnv, prompt: string) {
+export async function generateTelegramAnswer(env: NeonEnv, prompt: string | ModelMessage[]) {
   try {
     const text = await generateAnswer(env, prompt, 'Reply concisely, in a non robotic and humane way in plain text.')
     return text.slice(0, 4096).toWellFormed()

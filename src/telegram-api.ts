@@ -9,6 +9,36 @@ export type TelegramReply = {
 
 type TelegramReplyIds = Omit<TelegramReply, 'text'>
 
+type TelegramUpdate = {
+  update_id?: unknown
+  message?: {
+    message_id?: unknown
+    text?: unknown
+    chat?: { id?: unknown }
+    is_topic_message?: boolean
+    message_thread_id?: unknown
+    direct_messages_topic?: { topic_id?: unknown }
+  }
+}
+
+export function parseTelegramUpdate(input: unknown): TelegramReply | string | null {
+  const update = input as TelegramUpdate | null
+  if (!update || !Number.isSafeInteger(update.update_id)) return 'Invalid Telegram update'
+  const message = update.message
+  if (message === undefined) return null
+
+  const ids = {
+    updateId: update.update_id,
+    chatId: message?.chat?.id,
+    messageId: message?.message_id,
+    threadId: message?.is_topic_message === true ? message.message_thread_id : undefined,
+    directTopicId: message?.direct_messages_topic?.topic_id,
+  }
+  if (!hasTelegramReplyIds(ids)) return 'Invalid Telegram message'
+  if (typeof message.text !== 'string' || !message.text.trim()) return null
+  return { ...ids, text: message.text }
+}
+
 export function hasTelegramReplyIds(reply: Partial<Record<keyof TelegramReplyIds, unknown>>): reply is TelegramReplyIds {
   return Number.isSafeInteger(reply.updateId) &&
     Number.isSafeInteger(reply.chatId) &&
