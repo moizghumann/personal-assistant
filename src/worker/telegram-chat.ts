@@ -3,6 +3,7 @@ import { convertToModelMessages, createUIMessageStream, createUIMessageStreamRes
 import { generateTelegramAnswer, neonRateLimit } from '../ai.js'
 import { sendTelegramReply, TelegramRateLimitError, TelegramRejectedError } from '../telegram-api.js'
 import type { TelegramReply } from '../telegram-api.js'
+import { telegramWeb } from './telegram-web.js'
 
 export type TelegramWorkflowInput = TelegramReply & { previousWorkflowId?: string }
 
@@ -17,7 +18,7 @@ export function telegramConversation(message: TelegramReply) {
   return String(message.chatId)
 }
 
-export class TelegramChat extends AIChatAgent<Env> {
+export class TelegramChat extends AIChatAgent<Env & { FIRECRAWL_API_KEY?: string }> {
   maxPersistedMessages = 80
   private intake = Promise.resolve()
 
@@ -107,7 +108,7 @@ export class TelegramChat extends AIChatAgent<Env> {
     if (state === 'answered') throw new Error('Telegram update has already been answered')
     // Record the attempt before calling Neon so a crash cannot trigger a second model call.
     storage.put(receipt, 'generating')
-    const text = await generateTelegramAnswer(this.env, history).catch((error: unknown) => {
+    const text = await generateTelegramAnswer(this.env, history, telegramWeb(this.env.FIRECRAWL_API_KEY)).catch((error: unknown) => {
       if (error instanceof Error && error.message === neonRateLimit) storage.put(receipt, 'accepted')
       throw error
     })
