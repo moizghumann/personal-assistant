@@ -1,7 +1,54 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { jsonSchema, tool } from 'ai'
 import app from '../src/app.js'
+import { generateTelegramAnswer } from '../src/ai.js'
 import { sendTelegramReply, sendTelegramTyping, TelegramRateLimitError } from '../src/telegram-api.js'
+
+test('Telegram contains printed tool syntax in the initial reply and recovery', async (t) => {
+  const source = 'https://example.com/events/lahore'
+  const answer = 'Here is a verified listing.'
+  const cases = [
+    { name: 'a successful search', recovered: answer, results: [{ url: source }], callsTool: true },
+    { name: 'printed syntax again', recovered: 'Trying again <function', results: [{ url: source }], callsTool: true },
+    { name: 'no search results', recovered: answer, results: [], callsTool: true },
+    { name: 'the model skips the required lookup', recovered: answer, results: [], callsTool: false },
+  ]
+  for (const example of cases) {
+    await t.test(example.name, async (t) => {
+      const plain = (content: string) => ({
+        id: 'msg_1', type: 'message', role: 'assistant',
+        content: [{ type: 'output_text', text: content, annotations: [] }],
+      })
+      const search = {
+        id: 'fc_1', type: 'function_call', call_id: 'search-1',
+        name: 'webSearch', arguments: '{"query":"Lahore comedy"}',
+      }
+      const replies = [
+        plain('Let me try <function=findDataSource>{"query":"Lahore comedy"}</function>'),
+        ...(example.callsTool ? [search] : []),
+        plain(example.recovered),
+      ]
+      const fetchMock = t.mock.method(globalThis, 'fetch', async (destination: string | URL) => {
+        assert.equal(String(destination), 'https://neon.test/openai/v1/responses')
+        return Response.json({ id: 'resp_1', model: 'gpt-6-1-sol', output: [replies.shift()] })
+      })
+      const webSearch = tool({
+        inputSchema: jsonSchema({ type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }),
+        execute: () => example.results,
+      })
+      const reply = await generateTelegramAnswer({
+        NEON_AI_GATEWAY_BASE_URL: 'https://neon.test',
+        NEON_AI_GATEWAY_TOKEN: 'fake-token',
+      }, 'Any upcoming comedy in Lahore?', { instructions: 'Use live sources.', links: new Set(), tools: { webSearch } })
+      assert.equal(reply, example === cases[0] ? answer : 'I couldn’t verify that with a web search.')
+      assert.equal(fetchMock.mock.callCount(), example.callsTool ? 3 : 2)
+      assert.equal(JSON.parse(fetchMock.mock.calls[0].arguments[1].body).model, 'gpt-6-1-sol')
+      assert.equal(JSON.parse(fetchMock.mock.calls[1].arguments[1].body).tool_choice, 'required')
+      if (example.callsTool) assert.equal(JSON.parse(fetchMock.mock.calls[2].arguments[1].body).tool_choice, 'none')
+    })
+  }
+})
 
 test('Hono verifies Telegram updates and replies directly through Neon and Telegram', async (t) => {
   process.env.TELEGRAM_WEBHOOK_SECRET = 'test-secret'

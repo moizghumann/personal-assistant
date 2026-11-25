@@ -1,5 +1,5 @@
 import { createNeon } from '@neon/ai-sdk-provider'
-import { APICallError, generateText, isStepCount } from 'ai'
+import { APICallError, generateText, isStepCount, ToolChoiceViolationError } from 'ai'
 import type { ModelMessage, ToolSet } from 'ai'
 
 type NeonEnv = {
@@ -9,27 +9,54 @@ type NeonEnv = {
 
 type TelegramTools = { instructions: string; tools: ToolSet; links: Set<string> }
 
+export function hasToolCallMarkup(text: string) {
+  return /<\/?(?:function|tool_calls?)(?=[\s=>]|$)/i.test(text)
+}
+
 async function generateAnswer(env: NeonEnv, input: string | ModelMessage[], instructions?: string, tools?: ToolSet) {
   const signal = AbortSignal.timeout(tools ? 30_000 : 12_000)
   const neon = createNeon({ baseURL: env.NEON_AI_GATEWAY_BASE_URL, apiKey: env.NEON_AI_GATEWAY_TOKEN })
   let usedTools = false
 
   try {
+    const model = neon(tools ? 'gpt-6-1-sol' : 'meta-llama-3-1-8b-instruct')
+    const messages = typeof input === 'string' ? { prompt: input } : { messages: input }
+    const options = {
+      model,
+      ...messages,
+      maxRetries: 0,
+      abortSignal: signal,
+      maxOutputTokens: tools ? 2048 : 256,
+      ...(tools && { providerOptions: { openai: { reasoningEffort: 'low' } } }),
+    }
     const { text } = await generateText({
-      model: neon('meta-llama-3-1-8b-instruct'),
+      ...options,
       instructions,
-      ...(typeof input === 'string' ? { prompt: input } : { messages: input }),
       ...(tools && {
         tools,
         stopWhen: isStepCount(4),
         prepareStep: ({ stepNumber }) => stepNumber === 3 ? { toolChoice: 'none' as const } : undefined,
         onStepFinish: ({ toolCalls }) => { usedTools ||= toolCalls.length > 0 },
       }),
-      maxOutputTokens: tools ? 768 : 256,
-      maxRetries: 0,
-      abortSignal: signal,
     })
     const answer = text.trim()
+    if (tools?.webSearch && hasToolCallMarkup(answer)) {
+      usedTools = true
+      const retry = await generateText({
+        ...options,
+        instructions: `${instructions}\nUse the web search results to give the final answer in plain text. If they do not verify the requested facts, say so.`,
+        tools: { webSearch: tools.webSearch },
+        toolChoice: 'required',
+        stopWhen: isStepCount(2),
+        prepareStep: ({ stepNumber }) => stepNumber === 1 ? { toolChoice: 'none' as const } : undefined,
+      }).catch((error: unknown) => {
+        if (!ToolChoiceViolationError.isInstance(error)) throw error
+      })
+      const recovered = retry?.text.trim()
+      const searched = retry?.steps[0]?.toolResults.some(({ output }) => Array.isArray(output) && output.length > 0)
+      if (!searched || !recovered || hasToolCallMarkup(recovered)) return 'I couldn’t verify that with a web search.'
+      return recovered
+    }
     if (!answer) throw new Error('The model returned no text')
     return answer
   } catch (error) {

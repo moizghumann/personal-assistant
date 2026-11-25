@@ -1,6 +1,6 @@
 import { AIChatAgent } from '@cloudflare/ai-chat'
 import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse } from 'ai'
-import { generateTelegramAnswer, neonRateLimit } from '../ai.js'
+import { generateTelegramAnswer, hasToolCallMarkup, neonRateLimit } from '../ai.js'
 import { sendTelegramReply, TelegramRateLimitError, TelegramRejectedError } from '../telegram-api.js'
 import type { TelegramReply } from '../telegram-api.js'
 import { telegramWeb } from './telegram-web.js'
@@ -100,7 +100,9 @@ export class TelegramChat extends AIChatAgent<Env & { FIRECRAWL_API_KEY?: string
     if (last?.role !== 'user' || !last.id.startsWith('telegram-message-')) {
       throw new Error('Telegram agent has no user message')
     }
-    const history = await convertToModelMessages(this.messages.slice(-21))
+    const history = await convertToModelMessages(this.messages.slice(-21).filter((message) =>
+      message.role !== 'assistant' || !message.parts.some((part) => part.type === 'text' && hasToolCallMarkup(part.text)),
+    ))
     const receipt = `accepted:telegram-${last.id.slice('telegram-message-'.length)}`
     const storage = this.ctx.storage.kv
     const state = storage.get(receipt)
