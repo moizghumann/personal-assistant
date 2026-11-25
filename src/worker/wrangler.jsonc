@@ -11,5 +11,18 @@
     { "name": "hello-world", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
     { "name": "ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
     { "name": "telegram-reply", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
-  ]
+  ],
+  "env": {
+    "dev": {
+      "name": "personal-assistant-agent-dev",
+      "secrets": {
+        "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN"]
+      },
+      "workflows": [
+        { "name": "hello-world-dev", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
+        { "name": "ai-test-dev", "binding": "AI_TEST", "class_name": "AiTest" },
+        { "name": "telegram-reply-dev", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
+      ]
+    }
+  }
 }

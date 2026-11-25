@@ -9,14 +9,7 @@ export { TelegramReplyWorkflow } from './workflows/telegram-reply.js'
 
 const app = new Hono<{ Bindings: Env }>()
 
-app.use('*', async (c, next) => {
-  const token = c.req.header('Authorization')
-  if (!c.env.AGENT_WORKER_TOKEN || !token || !await timingSafeEqual(token, `Bearer ${c.env.AGENT_WORKER_TOKEN}`)) {
-    return c.text('Unauthorized', 401)
-  }
-  await next()
-})
-
+// Register the public test endpoint before the authentication middleware.
 app.get('/test/ai', async (c) => {
   if (!c.env.NEON_AI_GATEWAY_BASE_URL || !c.env.NEON_AI_GATEWAY_TOKEN) {
     return c.text('Neon AI Gateway is unavailable', 503)
@@ -30,6 +23,14 @@ app.get('/test/ai', async (c) => {
     console.error('AI test generation failed')
     return c.text('AI test could not generate a response', 502)
   }
+})
+
+app.use('*', async (c, next) => {
+  const token = c.req.header('Authorization')
+  if (!c.env.AGENT_WORKER_TOKEN || !token || !await timingSafeEqual(token, `Bearer ${c.env.AGENT_WORKER_TOKEN}`)) {
+    return c.text('Unauthorized', 401)
+  }
+  await next()
 })
 
 app.post('/telegram', async (c) => {
