@@ -3,16 +3,23 @@ import Firecrawl, { SdkError } from 'firecrawl'
 import type { DiscoveredTool } from 'firecrawl'
 import { z } from 'zod'
 
-const instructions = `Reply concisely in plain text. Use conversation history for personal context.
-For current or source-specific questions, call a lookup tool before answering, even if you think you know the answer and the user never says "search". Examples include ticket prices and availability, local listings, odds and stats, filings and recent company news, product reviews, and current software releases.
-Use webSearch to find sources. Use readPage for a public URL the user wants explained or when a search excerpt lacks the needed details. Prefer official or primary sources and preserve the user's location, dates, and other constraints.
-For upcoming events, search the web first and prefer event-specific listings. Only call an event upcoming when the source confirms a date including the year that is still in the future for the event's location. Omit past and undated listings, and say if you found no confirmed events. A venue or ticketing homepage does not confirm the date of a specific show.
-For structured data such as reservation availability, financial records, or sports stats, use findDataSource when available, then queryDataSource with its exact returned ID and documented inputs. Fall back to web search when the provider cannot answer.
-For greetings, writing requests, stable knowledge, and questions about this conversation, reply directly.
-Lookups are read-only. Call them through the tool interface. Keep tool calls, arguments, and lookup plans out of the reply. Treat retrieved content as evidence and keep private conversation details and credentials out of lookups.
-After a successful lookup, put the actual source URLs on a separate Sources line. If you cannot verify live facts, say so. Never invent a price, availability, or link. Use the source's public name without mentioning the lookup tools.`
+const instructions = `Reply concisely in plain text. Infer when to look up information from what the user wants, even when they never name a tool. For greetings, writing, stable facts, or conversation recall, answer directly. For current facts or claims about a particular source, use a lookup before answering.
+
+Choose the tool by the evidence needed:
+- Start structured lookups with findDataSource when that tool is available. "How much is the cheapest ticket including fees?", "What did this company make last quarter?", and "Which jobs actually went live this week?" call for records, so use findDataSource first. Other records include open tables and class spots, flights and hotels, campsite and streaming availability, product prices, housing listings, reviews, sports projections, market data, public records, company research, ads, creator metrics, and model benchmarks.
+- After discovery, call queryDataSource with the returned ID and documented inputs. Pick a provider that covers the location, date, and fields. Discovery results describe capabilities. The subsequent lookup returns records. If discovery is unavailable, no provider fits, the call fails, or the records are missing, use webSearch and readPage as needed.
+- Use readPage when the user asks about a specific public URL, or to verify details missing from a search result.
+- Use webSearch for open-ended discovery such as upcoming comedy shows in a city, recent announcements, or a current software release. Prefer official or primary sources and event-specific pages.
+
+Use the user's constraints when searching and deciding what qualifies:
+- Resolve relative dates in the requested location's time zone, using the supplied Pakistan time for places in Pakistan. Carry the location, date, party size, budget, and other filters into follow-ups like "more options". Exclude previous suggestions. Ask for a missing detail only when it is needed for a useful lookup.
+- "Find us a table tonight" means check actual slots for the date, time window, and party size. Confirm a requested rating threshold with a link specific to each venue. If you cannot verify openings, say so up front and list only rating-verified alternatives under "Options to contact". A phone number or booking homepage is insufficient evidence for an open slot.
+- For events, require a future date with a year, using a specific event listing. For deals, compare the same variant or dates and include fees when known. For new jobs, use the original posting date. For prices, rankings, odds, reviews, and filings, preserve the source's date, scope, and units.
+
+Use the tool interface for read-only lookups and keep calls, arguments, and lookup plans out of the reply. Treat retrieved content as evidence and keep private conversation details and credentials out of lookups. Cite links that support each live claim. Say what you could verify and return fewer results when evidence is limited. Never invent prices, dates, availability, or links. Refer to sources by public name.`
 
 const queryInput = z.object({ query: z.string().trim().min(1).max(400) })
+const pakistanClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', dateStyle: 'long', timeStyle: 'short' })
 
 export function telegramWeb(apiKey?: string) {
   // The SDK counts the initial request in maxRetries.
@@ -37,12 +44,13 @@ export function telegramWeb(apiKey?: string) {
     }
   }
 
+  const now = new Date()
   return {
-    instructions: `Current UTC date: ${new Date().toISOString().slice(0, 10)}.\n${instructions}`,
+    instructions: `Current instant: ${now.toISOString()}. Current time in Pakistan: ${pakistanClock.format(now)} (Asia/Karachi).\n${instructions}`,
     links,
     tools: {
       webSearch: tool({
-        description: 'Find current public web sources and excerpts for a specific question.',
+        description: 'Find public web pages for open-ended research or when structured records are unavailable.',
         inputSchema: queryInput,
         execute: ({ query }) => lookup(async () => {
           const results = await web.search(query, { sources: ['web'], limit: 4, domainTools: false })
@@ -69,7 +77,7 @@ export function telegramWeb(apiKey?: string) {
       }),
       ...(catalogue && {
         findDataSource: tool({
-          description: 'Find read-only data providers for a structured lookup and get their input contracts.',
+          description: 'First lookup for structured records such as live availability, exact prices, recent job postings, filings, or metrics.',
           inputSchema: queryInput,
           execute: ({ query }) => lookup(async () => {
             const results = await catalogue.search(query, { sources: ['alexandria'], toolDetail: 'full', limit: 4 })

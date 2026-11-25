@@ -4,6 +4,12 @@ import { jsonSchema, tool } from 'ai'
 import app from '../src/app.js'
 import { generateTelegramAnswer } from '../src/ai.js'
 import { sendTelegramReply, sendTelegramTyping, TelegramRateLimitError } from '../src/telegram-api.js'
+import { telegramWeb } from '../src/worker/telegram-web.js'
+
+test('Telegram lookups receive the Pakistan date across UTC midnight', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-25T23:19:00Z') })
+  assert.match(telegramWeb().instructions, /Current time in Pakistan: 26 November 2026 at 04:19/)
+})
 
 test('Telegram contains printed tool syntax in the initial reply and recovery', async (t) => {
   const source = 'https://example.com/events/lahore'
