@@ -113,9 +113,9 @@ export function telegramComputer(apiKey: string, botToken: string, attachment?: 
 
   const tools = {
     readAttachment: tool({
-      description: 'Read the current Telegram attachment. Supports PDF text, plain text, CSV, JSON, Markdown, JPG, PNG, and WebP.',
-      inputSchema: z.object({}),
-      async execute(): Promise<ToolOutput> {
+      description: 'Read the current Telegram attachment. For PDFs, returns page sizes and text positions. Pass pdfPage to inspect a particular page. Also supports plain text, CSV, JSON, Markdown, JPG, PNG, and WebP.',
+      inputSchema: z.object({ pdfPage: z.number().int().positive().max(100_000).optional() }),
+      async execute({ pdfPage }: { pdfPage?: number }): Promise<ToolOutput> {
         if (!attachment) return 'There is no attachment in this conversation.'
         if ((attachment.size ?? 0) > maxInputBytes) return 'This attachment exceeds the 10 MiB limit.'
         try {
@@ -123,9 +123,19 @@ export function telegramComputer(apiKey: string, botToken: string, attachment?: 
             const result = await run(await mount(), `PYTHONPATH=/tmp/telegram-pdf python3 - <<'PY'
 import pymupdf
 with pymupdf.open('${inputPdf}') as doc:
-    print("\\n".join(doc[i].get_text()[:3000] for i in range(min(len(doc), 12)))[:12000])
+    print(f"PDF has {len(doc)} pages. Coordinates are points from the top-left.")
+    if ${pdfPage ?? 0} > len(doc):
+        print("Requested page is out of range.")
+    else:
+        pages = [${pdfPage ?? 0} - 1] if ${pdfPage ?? 0} else range(min(len(doc), 12))
+        preview = []
+        for number in pages:
+            page = doc[number]
+            blocks = [f"{tuple(round(n) for n in block[:4])} {block[4]}" for block in page.get_text("blocks") if block[6] == 0]
+            preview.append(f"Page {number + 1} ({page.rect.width:g} x {page.rect.height:g}):\\n" + ("\\n".join(blocks)[:3000] or "No selectable text."))
+        print("\\n".join(preview)[:12000])
 PY`)
-            return result.trim() ? `Extracted text from up to the first 12 pages:\n${result.trim()}` : 'No selectable text was found in this PDF.'
+            return result.trim()
           }
           if (imageType) {
             const data = await getBytes()
@@ -143,29 +153,54 @@ PY`)
       },
       toModelOutput: imageOutput,
     }),
-    addPdfSignatureLines: tool({
-      description: 'Append a page with two blank signature and date lines to the current PDF and queue the edited copy. Use only when the user explicitly requests blank lines or fields. Never place a signature.',
-      inputSchema: z.object({}),
-      async execute() {
-        if (!pdf) return 'A PDF attachment is needed to add signature lines.'
+    editPdf: tool({
+      description: 'Return an edited copy of the attached PDF by adding text in rectangular boxes. Inspect the layout with readAttachment first. Page numbers are 1-based. Use the next page number to append one page of the same size as the last. Box coordinates [left, top, right, bottom] are PDF points measured from the top-left.',
+      inputSchema: z.object({
+        filename: z.string().regex(safeFilename).regex(/\.pdf$/i),
+        additions: z.array(z.object({
+          page: z.number().int().positive(),
+          box: z.tuple([z.number().nonnegative(), z.number().nonnegative(), z.number().positive(), z.number().positive()]),
+          text: z.string().trim().min(1).max(3000),
+          fontSize: z.number().min(6).max(96),
+        })).min(1).max(24),
+      }),
+      async execute({ filename, additions }) {
+        if (!pdf) return 'A PDF attachment is needed.'
         try {
           const sandbox = await mount()
-          const path = `${outbox}/signature-lines.pdf`
-          await run(sandbox, `PYTHONPATH=/tmp/telegram-pdf python3 - <<'PY'
+          const path = `${outbox}/${filename}`
+          const result = await run(sandbox, `PYTHONPATH=/tmp/telegram-pdf python3 - <<'PY'
+from base64 import b64decode
+from html import escape
+import json
 import pymupdf
+additions = json.loads(b64decode("${Buffer.from(JSON.stringify(additions)).toString('base64')}"))
 with pymupdf.open('${inputPdf}') as doc:
-    page = doc.new_page()
-    page.insert_text((55, 65), "Signatures", fontsize=18)
-    for y, label in [(145, "Party 1"), (235, "Party 2")]:
-        page.draw_line((55, y), (350, y))
-        page.draw_line((390, y), (540, y))
-        page.insert_text((55, y + 18), label + " signature")
-        page.insert_text((390, y + 18), "Date")
+    count = len(doc)
+    if not count or any(edit["page"] > count + 1 for edit in additions):
+        print("Invalid target page. Choose an existing page or append one new page.")
+        raise SystemExit
+    if any(edit["page"] == count + 1 for edit in additions):
+        size = doc[-1].rect
+        doc.new_page(width=size.width, height=size.height)
+    for edit in additions:
+        page = doc[edit["page"] - 1]
+        box = pymupdf.Rect(edit["box"])
+        if box.is_empty or not page.rect.contains(box):
+            print("A text box falls outside its page. Adjust the coordinates and retry.")
+            raise SystemExit
+        text = escape(edit["text"]).replace("\\n", "<br>")
+        spare, _ = page.insert_htmlbox(box, text, css=f'* {{ font-size: {edit["fontSize"]}pt; }}', scale_low=1)
+        if spare < 0:
+            print("Text does not fit in its box. Enlarge the box or reduce the font size and retry.")
+            raise SystemExit
     doc.save('${path}', garbage=3, deflate=True)
+    print("saved")
 PY`)
+          if (result.trim() !== 'saved') return result.trim() || 'The PDF edit could not be saved.'
           const details = await sandbox.fs.getFileDetails(path)
           if (details.size > maxOutputBytes) return 'The edited PDF exceeds the 1 MiB reply limit.'
-          return queue('signature-lines.pdf', await sandbox.fs.downloadFile(path, 15))
+          return queue(filename, await sandbox.fs.downloadFile(path, 15))
         } catch {
           return 'I couldn’t create an edited copy of this PDF.'
         }

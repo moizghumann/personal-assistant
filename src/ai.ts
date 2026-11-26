@@ -64,12 +64,12 @@ async function generateAnswer(env: NeonEnv, input: string | ModelMessage[], inst
           if (stepNumber === stepLimit - 1) return { toolChoice: 'none' as const }
           if (steps.some(({ toolCalls }) => toolCalls.some(({ toolName }) =>
             toolName === 'readAttachment' || toolName === 'desktop',
-          ))) return { activeTools: ['readAttachment', 'addPdfSignatureLines', 'desktop', 'returnFile'] }
+          ))) return { activeTools: ['readAttachment', 'editPdf', 'desktop', 'returnFile'] }
         },
         onStepFinish: ({ toolCalls }) => {
           usedTools ||= toolCalls.length > 0
           usedComputer ||= toolCalls.some(({ toolName }) =>
-            ['readAttachment', 'addPdfSignatureLines', 'desktop', 'returnFile'].includes(toolName),
+            ['readAttachment', 'editPdf', 'desktop', 'returnFile'].includes(toolName),
           )
         },
       }),
