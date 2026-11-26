@@ -63,13 +63,13 @@ async function generateAnswer(env: NeonEnv, input: string | ModelMessage[], inst
         prepareStep: ({ stepNumber, steps }) => {
           if (stepNumber === stepLimit - 1) return { toolChoice: 'none' as const }
           if (steps.some(({ toolCalls }) => toolCalls.some(({ toolName }) =>
-            toolName === 'readAttachment' || toolName === 'desktop',
-          ))) return { activeTools: ['readAttachment', 'editPdf', 'desktop', 'returnFile'] }
+            toolName === 'readAttachment' || toolName === 'desktop' || toolName === 'runPython',
+          ))) return { activeTools: ['readAttachment', 'runPython', 'desktop', 'returnFile'] }
         },
         onStepFinish: ({ toolCalls }) => {
           usedTools ||= toolCalls.length > 0
           usedComputer ||= toolCalls.some(({ toolName }) =>
-            ['readAttachment', 'editPdf', 'desktop', 'returnFile'].includes(toolName),
+            ['readAttachment', 'runPython', 'desktop', 'returnFile'].includes(toolName),
           )
         },
       }),

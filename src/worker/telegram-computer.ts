@@ -9,9 +9,10 @@ const maxInputBytes = 10 * 1024 * 1024
 // shortcut: one 1 MiB reply fits in the existing Durable Object storage, use object storage for larger exports.
 const maxOutputBytes = 1024 * 1024
 const outbox = '/tmp/telegram-outbox'
-const inputPdf = '/tmp/telegram-input.pdf'
 const safeFilename = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$/
-const installPdf = 'python3 -m pip install --disable-pip-version-check --no-input --only-binary=:all: --target /tmp/telegram-pdf PyMuPDF==1.28.2'
+const pythonPackages = '/tmp/telegram-python'
+const installPackages = 'python3 -m pip install --disable-pip-version-check --no-input --only-binary=:all: ' +
+  '--target ' + pythonPackages + ' PyMuPDF==1.28.2 Pillow==12.2.0 openpyxl==3.1.5 python-docx==1.2.0'
 const desktopInput = z.object({ operation: z.discriminatedUnion('action', [
   z.object({ action: z.literal('screenshot') }),
   z.object({ action: z.literal('click'), x: z.number().int().min(0).max(4096), y: z.number().int().min(0).max(4096) }),
@@ -75,11 +76,12 @@ async function run(sandbox: Sandbox, command: string, timeout = 15) {
 
 export function telegramComputer(apiKey: string, botToken: string, attachment?: TelegramAttachment) {
   const daytona = new Daytona({ apiKey })
-  const pdf = attachment?.mimeType === 'application/pdf' || /\.pdf$/i.test(attachment?.name ?? '')
-  const extension = attachment?.name.split('.').at(-1)?.toLowerCase()
+  const extension = attachment?.mimeType === 'application/pdf'
+    ? '.pdf'
+    : attachment?.name.match(/\.[a-z0-9]{1,12}$/i)?.[0].toLowerCase() ?? ''
   const imageTypes = new Map([['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'], ['png', 'image/png'], ['webp', 'image/webp']])
-  const imageType = imageTypes.get(extension ?? '')
-  const input = pdf ? inputPdf : `/tmp/telegram-input.${imageType ? extension : 'txt'}`
+  const imageType = imageTypes.get(extension.slice(1))
+  const input = '/tmp/telegram-input' + extension
   let created: Sandbox | undefined
   let ready: Promise<Sandbox> | undefined
   let bytes: Promise<Buffer> | undefined
@@ -89,13 +91,12 @@ export function telegramComputer(apiKey: string, botToken: string, attachment?: 
 
   const getSandbox = () => ready ??= (async () => {
     created = await daytona.v0.create(
-      { language: 'typescript', ephemeral: true, autoStopInterval: 5, networkBlockAll: !pdf },
+      { language: 'typescript', ephemeral: true, autoStopInterval: 5 },
       { timeout: 35 },
     )
-    if (pdf) {
-      await run(created, installPdf, 30)
-      await created.updateNetworkSettings({ networkBlockAll: true })
-    }
+    // Setup uses fixed packages. Block egress before uploading a file or executing agent code.
+    await run(created, installPackages, 30)
+    await created.updateNetworkSettings({ networkBlockAll: true })
     await created.fs.createFolder(outbox, '755')
     return created
   })()
@@ -113,30 +114,12 @@ export function telegramComputer(apiKey: string, botToken: string, attachment?: 
 
   const tools = {
     readAttachment: tool({
-      description: 'Read the current Telegram attachment. For PDFs, returns page sizes and text positions. Pass pdfPage to inspect a particular page. Also supports plain text, CSV, JSON, Markdown, JPG, PNG, and WebP.',
-      inputSchema: z.object({ pdfPage: z.number().int().positive().max(100_000).optional() }),
-      async execute({ pdfPage }: { pdfPage?: number }): Promise<ToolOutput> {
+      description: 'Preview a text file or image. Use runPython to inspect PDFs, spreadsheets, and other formats.',
+      inputSchema: z.object({}),
+      async execute(): Promise<ToolOutput> {
         if (!attachment) return 'There is no attachment in this conversation.'
         if ((attachment.size ?? 0) > maxInputBytes) return 'This attachment exceeds the 10 MiB limit.'
         try {
-          if (pdf) {
-            const result = await run(await mount(), `PYTHONPATH=/tmp/telegram-pdf python3 - <<'PY'
-import pymupdf
-with pymupdf.open('${inputPdf}') as doc:
-    print(f"PDF has {len(doc)} pages. Coordinates are points from the top-left.")
-    if ${pdfPage ?? 0} > len(doc):
-        print("Requested page is out of range.")
-    else:
-        pages = [${pdfPage ?? 0} - 1] if ${pdfPage ?? 0} else range(min(len(doc), 12))
-        preview = []
-        for number in pages:
-            page = doc[number]
-            blocks = [f"{tuple(round(n) for n in block[:4])} {block[4]}" for block in page.get_text("blocks") if block[6] == 0]
-            preview.append(f"Page {number + 1} ({page.rect.width:g} x {page.rect.height:g}):\\n" + ("\\n".join(blocks)[:3000] or "No selectable text."))
-        print("\\n".join(preview)[:12000])
-PY`)
-            return result.trim()
-          }
           if (imageType) {
             const data = await getBytes()
             if (data.length > 2 * 1024 * 1024) return 'Image previews are limited to 2 MiB.'
@@ -145,7 +128,7 @@ PY`)
           if (attachment.mimeType?.startsWith('text/') || /\.(?:txt|csv|json|md|tsv)$/i.test(attachment.name)) {
             return new TextDecoder().decode((await getBytes()).subarray(0, 12_000))
           }
-          return 'This file format is unsupported.'
+          return 'This format has no direct preview. Use runPython to inspect it.'
         } catch {
           console.warn('Telegram attachment read failed')
           return 'I couldn’t read the attachment. It may be protected, invalid, too large, or temporarily unavailable.'
@@ -153,56 +136,30 @@ PY`)
       },
       toModelOutput: imageOutput,
     }),
-    editPdf: tool({
-      description: 'Return an edited copy of the attached PDF by adding text in rectangular boxes. Inspect the layout with readAttachment first. Page numbers are 1-based. Use the next page number to append one page of the same size as the last. Box coordinates [left, top, right, bottom] are PDF points measured from the top-left.',
-      inputSchema: z.object({
-        filename: z.string().regex(safeFilename).regex(/\.pdf$/i),
-        additions: z.array(z.object({
-          page: z.number().int().positive(),
-          box: z.tuple([z.number().nonnegative(), z.number().nonnegative(), z.number().positive(), z.number().positive()]),
-          text: z.string().trim().min(1).max(3000),
-          fontSize: z.number().min(6).max(96),
-        })).min(1).max(24),
-      }),
-      async execute({ filename, additions }) {
-        if (!pdf) return 'A PDF attachment is needed.'
+    runPython: tool({
+      description: [
+        'Run Python in an isolated, offline workspace to inspect, transform, verify, or create files.',
+        'PyMuPDF (pymupdf), Pillow (PIL), openpyxl, and python-docx (docx) are installed.',
+        attachment ? 'Set useAttachment to mount the current attachment at ' + input + '.' : 'This turn has no input file.',
+        'Print concise results. Save deliverables in ' + outbox + ' and call returnFile with the filename.',
+        'Multiple runs share the workspace until this reply finishes.',
+      ].join(' '),
+      inputSchema: z.object({ code: z.string().min(1).max(16_000), useAttachment: z.boolean() }),
+      async execute({ code, useAttachment }) {
+        if (useAttachment && !attachment) return { error: 'There is no attachment to mount.' }
         try {
-          const sandbox = await mount()
-          const path = `${outbox}/${filename}`
-          const result = await run(sandbox, `PYTHONPATH=/tmp/telegram-pdf python3 - <<'PY'
-from base64 import b64decode
-from html import escape
-import json
-import pymupdf
-additions = json.loads(b64decode("${Buffer.from(JSON.stringify(additions)).toString('base64')}"))
-with pymupdf.open('${inputPdf}') as doc:
-    count = len(doc)
-    if not count or any(edit["page"] > count + 1 for edit in additions):
-        print("Invalid target page. Choose an existing page or append one new page.")
-        raise SystemExit
-    if any(edit["page"] == count + 1 for edit in additions):
-        size = doc[-1].rect
-        doc.new_page(width=size.width, height=size.height)
-    for edit in additions:
-        page = doc[edit["page"] - 1]
-        box = pymupdf.Rect(edit["box"])
-        if box.is_empty or not page.rect.contains(box):
-            print("A text box falls outside its page. Adjust the coordinates and retry.")
-            raise SystemExit
-        text = escape(edit["text"]).replace("\\n", "<br>")
-        spare, _ = page.insert_htmlbox(box, text, css=f'* {{ font-size: {edit["fontSize"]}pt; }}', scale_low=1)
-        if spare < 0:
-            print("Text does not fit in its box. Enlarge the box or reduce the font size and retry.")
-            raise SystemExit
-    doc.save('${path}', garbage=3, deflate=True)
-    print("saved")
-PY`)
-          if (result.trim() !== 'saved') return result.trim() || 'The PDF edit could not be saved.'
-          const details = await sandbox.fs.getFileDetails(path)
-          if (details.size > maxOutputBytes) return 'The edited PDF exceeds the 1 MiB reply limit.'
-          return queue(filename, await sandbox.fs.downloadFile(path, 15))
+          const sandbox = await (useAttachment ? mount() : getSandbox())
+          const script = '/tmp/telegram-task.py'
+          await sandbox.fs.uploadFile(Buffer.from(code), script, 15)
+          const { exitCode, result } = await sandbox.process.executeCommand(
+            "set -o pipefail; timeout -k 1s 25s python3 -u /tmp/telegram-task.py 2>&1 | head -c 12000",
+            outbox,
+            { PYTHONPATH: pythonPackages },
+            30,
+          )
+          return { exitCode, output: result.slice(0, 12_000) }
         } catch {
-          return 'I couldn’t create an edited copy of this PDF.'
+          return { error: 'The workspace could not run this program.' }
         }
       },
     }),
@@ -237,17 +194,10 @@ PY`)
       toModelOutput: imageOutput,
     }),
     returnFile: tool({
-      description: `Queue one generated file for delivery to the current chat. Supply a simple filename in ${outbox}, or supply content to create and return a plain text, CSV, JSON or Markdown file directly.`,
-      inputSchema: z.object({
-        filename: z.string().regex(safeFilename),
-        content: z.string().max(15_000).optional(),
-      }),
-      async execute({ filename, content }) {
+      description: `Send one generated file back to the current chat. Save the file in ${outbox} first, then supply its filename.`,
+      inputSchema: z.object({ filename: z.string().regex(safeFilename) }),
+      async execute({ filename }) {
         try {
-          if (content !== undefined) {
-            if (!/\.(?:txt|csv|json|md|tsv)$/i.test(filename)) return 'Use a supported text extension.'
-            return queue(filename, Buffer.from(content))
-          }
           const sandbox = await getSandbox()
           const path = `${outbox}/${filename}`
           const size = Number((await run(sandbox, `test -f '${path}' && test ! -L '${path}' && test ! -L '${outbox}' && stat -c %s '${path}'`)).trim())
