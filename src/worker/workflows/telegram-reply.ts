@@ -33,13 +33,13 @@ export class TelegramReplyWorkflow extends WorkflowEntrypoint<Env, TelegramWorkf
     try {
       let reply: string
       try {
-        reply = await step.do('generate-reply', { retries: { limit: 2, delay: '2 seconds', backoff: 'exponential' } }, async () => {
+        reply = await step.do('generate-reply', { timeout: '3 minutes', retries: { limit: 2, delay: '2 seconds', backoff: 'exponential' } }, async () => {
           const token = this.env.TELEGRAM_BOT_TOKEN
           let typing = sendTelegramTyping(token, message)
           const refresh = setInterval(() => { typing = sendTelegramTyping(token, message) }, 4_000)
           try {
             const agent = await getAgentByName(this.env.TELEGRAM_CHAT, name)
-            return await agent.replyToUpdate(message.updateId, message.text)
+            return await agent.replyToUpdate(message)
           } catch (error) {
             if (error instanceof Error && error.message === neonRateLimit) throw error
             throw new NonRetryableError(error instanceof Error ? error.message : 'Telegram generation failed')
@@ -68,7 +68,7 @@ export class TelegramReplyWorkflow extends WorkflowEntrypoint<Env, TelegramWorkf
       const stepName = attempt === 1 ? name : `${name}-${attempt}`
       const delivery = await step.do(stepName, { retries: { limit: 0, delay: '1 second' } }, async () => {
         const agent = await getAgentByName(this.env.TELEGRAM_CHAT, telegramConversation(message))
-        using result = await agent.deliverUpdate(message, text)
+        using result = await agent.deliverUpdate(message, text, name === 'send-reply')
         if ('messageId' in result) return { messageId: result.messageId }
         if (attempt === 3) throw new Error('Telegram still rate limited after three attempts')
         return { retryAfter: result.retryAfter }

@@ -3,9 +3,10 @@
   "main": "agent-worker.ts",
   "compatibility_date": "2026-11-24",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": { "DAYTONA_USE_DEPRECATED_POLLING": "true" },
   "observability": { "enabled": true, "traces": { "enabled": true } },
   "secrets": {
-    "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
+    "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "DAYTONA_API_KEY"]
   },
   "durable_objects": {
     "bindings": [{ "name": "TELEGRAM_CHAT", "class_name": "TelegramChat" }]
@@ -19,8 +20,9 @@
   "env": {
     "dev": {
       "name": "personal-assistant-agent-dev",
+      "vars": { "DAYTONA_USE_DEPRECATED_POLLING": "true" },
       "secrets": {
-        "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
+        "required": ["AGENT_WORKER_TOKEN", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "DAYTONA_API_KEY"]
       },
       "durable_objects": {
         "bindings": [{ "name": "TELEGRAM_CHAT", "class_name": "TelegramChat" }]

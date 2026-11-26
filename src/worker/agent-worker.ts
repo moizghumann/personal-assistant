@@ -22,7 +22,7 @@ export default {
       if (!matchesSecret(request.headers.get('X-Telegram-Bot-Api-Secret-Token'), env.TELEGRAM_WEBHOOK_SECRET)) {
         return new Response('Unauthorized', { status: 401 })
       }
-      const message = parseTelegramUpdate(await request.json().catch(() => null))
+      const message = parseTelegramUpdate(await request.json().catch(() => null), true)
       if (typeof message === 'string') return new Response(message, { status: 400 })
       if (!message) return new Response(null, { status: 204 })
       return startTelegramReply(env, message)

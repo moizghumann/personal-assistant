@@ -9,7 +9,7 @@ async function main() {
   const daytona = new Daytona({ apiKey })
   const sandbox = await daytona.v0.create({ language: 'typescript' })
   try {
-    const { exitCode, result } = await sandbox.process.codeRun('console.log("Hello World")', undefined, 30)
+    const { exitCode, result } = await sandbox.process.executeCommand(`node -e 'console.log("Hello World")'`, undefined, undefined, 30)
     if (exitCode !== 0 || result.trim() !== 'Hello World') {
       throw new Error(`Sandbox program returned unexpected output (exit code ${exitCode}).`)
     }
