@@ -13,8 +13,6 @@
   },
   "migrations": [{ "tag": "telegram-chat-v1", "new_sqlite_classes": ["TelegramChat"] }],
   "workflows": [
-    { "name": "prod-hello", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
-    { "name": "prod-ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
     { "name": "prod-telegram", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
   ],
   "env": {
@@ -29,8 +27,6 @@
       },
       "migrations": [{ "tag": "telegram-chat-v1", "new_sqlite_classes": ["TelegramChat"] }],
       "workflows": [
-        { "name": "dev-hello", "binding": "HELLO_WORLD", "class_name": "HelloWorld" },
-        { "name": "dev-ai-test", "binding": "AI_TEST", "class_name": "AiTest" },
         { "name": "dev-telegram", "binding": "TELEGRAM_REPLY", "class_name": "TelegramReplyWorkflow" }
       ]
     }

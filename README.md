@@ -27,12 +27,7 @@ The Hono app starts at `src/index.ts` and the Worker starts at
 Use a different `AGENT_WORKER_TOKEN` for local and production Worker HTTP
 requests. Start Hono with `npm run dev` or the Worker with `npm run dev:worker`.
 
-- Open [`/test/ai`](http://localhost:3000/test/ai) for an answer from Hono.
-- Open [Wrangler Local Explorer](http://localhost:8787/cdn-cgi/local/explorer)
-  to run `hello-world` and `ai-test` and inspect their output. These workflows
-  can run with Hono stopped.
-
-Run `npm test` for the mocked Telegram webhook and `npm run build:worker` to
+Run `npm test` for the router and mocked Telegram webhook and `npm run build:worker` to
 generate Worker binding types and type-check the workflows.
 
 Deploy each app independently. The Telegram webhook URL and

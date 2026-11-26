@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=src/.env --import tsx src/index.ts",
     "dev:worker": "wrangler dev --config src/worker/wrangler.jsonc",
+    "db:push": "node --env-file-if-exists=src/.env ./node_modules/drizzle-kit/bin.cjs push",
     "test": "node --import tsx --test 'test/**/*.test.ts'",
     "test:daytona": "node --env-file-if-exists=.env --env-file-if-exists=src/.env --env-file-if-exists=.env.local --import tsx scripts/daytona-smoke.ts",
     "build": "tsc --noEmit",
@@ -17,8 +18,10 @@
     "@neon/ai-sdk-provider": "^1.6.0",
     "@neon/config": "^1.14.6",
     "@neon/env": "^2.1.9",
+    "@neondatabase/serverless": "^1.2.1",
     "agents": "^0.34.0",
     "ai": "^7.0.181",
+    "drizzle-orm": "^0.45.4",
     "firecrawl": "^4.54.0",
     "hono": "^4.13.16",
     "tsx": "^4.23.0",
@@ -27,6 +30,7 @@
   "devDependencies": {
     "@hono/cli": "^1.0.0-rc.9",
     "@types/node": "^26.1.1",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^7.0.2",
     "wrangler": "^4.168.0"
   }

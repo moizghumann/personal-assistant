@@ -105,13 +105,6 @@ async function generateAnswer(env: NeonEnv, input: string | ModelMessage[], inst
   }
 }
 
-export function generateTestAnswer(
-  env: NeonEnv,
-  prompt = 'Earth takes about 365.24 days to orbit the Sun. Explain why most calendar years have 365 days and why we have leap years in two or three plain-text sentences.',
-) {
-  return generateAnswer(env, prompt)
-}
-
 export const telegramGenerationFailure = 'I couldn’t generate a reply right now. Please try again.'
 export const neonRateLimit = 'Neon AI Gateway generation failed (HTTP 429)'
 
